@@ -13,6 +13,7 @@ import numpy as np
 import open3d as o3d
 import torch
 import tyro
+from ImplicitUniformSampler import ImplicitUniformSampler
 from rich.console import Console
 from typing_extensions import Annotated, Literal
 
@@ -37,6 +38,23 @@ class Exporter:
     output_dir: Path
     """Path to the output directory."""
 
+@dataclass 
+class ExportUniformSamples(Exporter):
+    """Export a uniform set of samples on surface."""
+    num_rays: int = 20000
+    
+    def main(self) -> None:
+        if not self.output_dir.exists():
+            self.output_dir.mkdir(parents=True)
+        
+        sampler = ImplicitUniformSampler()
+        
+        _, pipeline, _ = eval_setup(self.load_config)
+        dfn = lambda x: pipeline.model.field.forward_geonetwork(x.float())[:, 0].contiguous()
+        pts = sampler.sample(sdf_func=dfn, num_rays=self.num_rays)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pts.detach().cpu().numpy())
+        o3d.io.write_point_cloud(f"{self.output_dir}/samples_numrays{self.num_rays}.ply", pcd)
 
 @dataclass
 class ExportPointCloud(Exporter):
@@ -315,6 +333,7 @@ class ExportMarchingCubesMesh(Exporter):
 
 
 Commands = Union[
+    Annotated[ExportUniformSamples, tyro.conf.subcommand(name="uniformsamples")],
     Annotated[ExportPointCloud, tyro.conf.subcommand(name="pointcloud")],
     Annotated[ExportTSDFMesh, tyro.conf.subcommand(name="tsdf")],
     Annotated[ExportPoissonMesh, tyro.conf.subcommand(name="poisson")],
